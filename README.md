@@ -260,5 +260,920 @@ export class EnterpriseArchitectAgent extends BaseAgent<EnterpriseArchitectAgent
   }
 
   @tool({ description: "ビジネス要件を分析し、戦略的質問を生成します" })
+  async analyzeBusinessRequirements(userInput: string): Promise<string[]> {
+    const optimizeRequest: DspyOptimizePromptRequest = {
+      task_description: "ユーザーのビジネス目標を深掘りする質問生成",
+      few_shot_examples: [
+        { input: "我が社のDXを推進したい", output: "DX推進の具体的な数値目標（KPI）は何ですか？" },
+        { input: "コスト削減が課題だ", output: "どの業務領域でのコスト削減を最優先と考えていますか？" },
+      ],
+      optimizer_type: "BootstrapFewShot",
+      user_query: userInput, // ユーザーの初期入力もコンテキストとして渡す
+    };
+    try {
+      const optimizedQuestions = await this.context.dspyBridge.optimizePrompt(optimizeRequest);
+      // optimizedQuestions は string[] 型と想定
+      return optimizedQuestions.prompts;
+    } catch (error) {
+      this.logger.error("DSPyプロンプト最適化エラー:", error);
+      // フォールバック処理: デフォルトの質問セットを返すなど
+      return ["具体的な目標は何ですか？", "現状の課題は何ですか？"];
+    }
+  }
 
-(Content truncated due to size limit. Use line ranges to read in chunks)
+  @tool({ description: "複数の戦略オプションを比較評価します" })
+  async evaluateStrategicOptions(options: Array<{name: string, details: string}>): Promise<any> {
+    const evaluateRequest: DspyEvaluateOptionsRequest = {
+      options: options,
+      evaluation_criteria: ["コスト", "リスク", "実現可能性", "ビジネスインパクト"],
+      module_type: "MultiChainComparison",
+    };
+    try {
+      const evaluationResult = await this.context.dspyBridge.evaluateOptions(evaluateRequest);
+      // evaluationResult は構造化された比較結果オブジェクトと想定
+      return evaluationResult;
+    } catch (error) {
+      this.logger.error("DSPy戦略オプション評価エラー:", error);
+      throw error; // または適切なエラーハンドリング
+    }
+  }
+}
+
+// src/services/dspy-bridge.service.ts
+// (axiosやfetchを用いたHTTPクライアント実装)
+export interface DspyOptimizePromptRequest { /* ... */ prompts?: string[] }
+export interface DspyEvaluateOptionsRequest { /* ... */ }
+
+export class DspyBridgeService {
+  private apiClient: any; // e.g., AxiosInstance
+  constructor(baseUrl: string, apiKey: string) {
+    // Initialize HTTP client with baseUrl and auth headers
+  }
+  async optimizePrompt(request: DspyOptimizePromptRequest): Promise<DspyOptimizePromptRequest> { /* ... */ }
+  async evaluateOptions(request: DspyEvaluateOptionsRequest): Promise<any> { /* ... */ }
+  // ... other DSPy module calls
+}
+```
+
+### 7.2. DSPyブリッジサービス (Python/FastAPI) の実装例
+
+```python
+# dspy_bridge/main.py
+from fastapi import FastAPI, HTTPException, Body
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any
+import dspy
+
+# --- DSPyモジュールの設定 (例) ---
+lm = dspy.OpenAI(model='gpt-3.5-turbo', api_key='YOUR_OPENAI_API_KEY') # 環境変数から読み込むのが望ましい
+dspy.settings.configure(lm=lm)
+
+# --- Pydanticモデル定義 (リクエスト/レスポンス) ---
+class FewShotExample(BaseModel):
+    input: str
+    output: str
+
+class OptimizePromptRequest(BaseModel):
+    task_description: str
+    few_shot_examples: List[FewShotExample]
+    optimizer_type: str = "BootstrapFewShot"
+    user_query: str | None = None
+    prompts: List[str] | None = None # レスポンス用
+
+class StrategicOption(BaseModel):
+    name: str
+    details: str
+
+class EvaluateOptionsRequest(BaseModel):
+    options: List[StrategicOption]
+    evaluation_criteria: List[str]
+    module_type: str = "MultiChainComparison"
+
+app = FastAPI()
+
+# --- DSPyモジュールラッパー (例) ---
+class OptimizedQuestionGenerator(dspy.Signature):
+    """ユーザーのビジネス目標を深掘りするための最適な質問を3つ生成します。"""
+    task_description: str = dspy.InputField(desc="質問生成のタスク説明")
+    user_query: str = dspy.InputField(desc="ユーザーからの初期クエリ")
+    optimized_question_1: str = dspy.OutputField(desc="最適化された質問1")
+    optimized_question_2: str = dspy.OutputField(desc="最適化された質問2")
+    optimized_question_3: str = dspy.OutputField(desc="最適化された質問3")
+
+# --- APIエンドポイント定義 ---
+@app.post("/dspy/optimize_prompt", response_model=OptimizePromptRequest)
+async def optimize_prompt_endpoint(request: OptimizePromptRequest = Body(...)):
+    try:
+        if request.optimizer_type == "BootstrapFewShot":
+            # DSPyのBootstrapFewShotの具体的な使い方に合わせる
+            # ここでは例としてシグネチャベースの予測器を仮定
+            predictor = dspy.Predict(OptimizedQuestionGenerator)
+            # few_shot_examples を使って predictor を訓練または設定するロジックが必要
+            # (DSPyの実際のBootstrapFewShotの使い方とは異なる単純化された例)
+            # trainset = [dspy.Example(input=ex.input, output=ex.output) for ex in request.few_shot_examples]
+            # teleprompter = BootstrapFewShot(metric=some_metric)
+            # compiled_predictor = teleprompter.compile(predictor, trainset=trainset)
+            
+            # 実際のDSPyの利用方法に応じて実装。以下はダミーの応答。
+            # この部分はDSPyの具体的なAPIに基づいて詳細化が必要。
+            result = predictor(task_description=request.task_description, user_query=request.user_query or "")
+            
+            response_prompts = [
+                result.optimized_question_1,
+                result.optimized_question_2,
+                result.optimized_question_3
+            ]
+            request.prompts = [p for p in response_prompts if p] # Noneや空文字を除外
+            return request
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported optimizer type: {request.optimizer_type}")
+    except Exception as e:
+        # エラーロギングをここで行う
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/dspy/evaluate_options")
+async def evaluate_options_endpoint(request: EvaluateOptionsRequest = Body(...)):
+    # MultiChainComparisonなどのDSPyモジュールを利用した評価ロジックを実装
+    # ここではダミーの応答を返す
+    # この部分はDSPyの具体的なAPIに基づいて詳細化が必要。
+    results = []
+    for option in request.options:
+        evaluation = {crit: "評価結果..." for crit in request.evaluation_criteria}
+        results.append({"option_name": option.name, "evaluation": evaluation})
+    return {"evaluation_results": results}
+
+# ... 他のDSPyモジュールに対応するエンドポイント
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+
+**注記**: 上記のDSPyブリッジサービスのコード例は、DSPyの具体的なモジュールの使い方を簡略化しています。実際の`BootstrapFewShot`や`MultiChainComparison`の利用には、適切な`Signature`定義、`Metric`関数、`Teleprompter`の設定、`compile`メソッドの呼び出しなど、より詳細なDSPyの作法に従った実装が必要です。
+
+## 8. 評価・モニタリングの強化（詳細化）
+
+*   **自動評価の統合**: Mastra.AIの`Evals`機能からDSPyブリッジAPIを介してDSPyの`Evaluate`機能を呼び出します。評価用データセット（devset）はMastra.AI側で管理し、評価メトリクス（例: `answer_accuracy`, `faithfulness`, `latency`）も定義します。DSPy側で評価を実行し、結果（スコア、失敗ケースなど）をMastra.AIに返却します。この評価結果を基に、DSPyのオプティマイザ（例: `BayesianSignatureOptimizer`）を起動し、プロンプトやモジュール設定を自動的に改善するループを構築します。
+*   **トレーシングの可視化**: Mastra.AI Agentの処理フロー、Agent間メッセージ、DSPyブリッジAPI呼び出し（リクエスト、レスポンス、レイテンシ）、DSPy内部のモジュール実行ステップ（`ChainOfThought`の各思考ステップなど）をOpenTelemetryでトレースします。収集されたトレースデータはGrafana TempoやJaegerで可視化し、パフォーマンスボトルネックの特定やエラー分析に活用します。
+
+## 9. まとめと今後のステップ
+
+本詳細実装計画では、TOGAF、C4モデル、クリーンアーキテクチャを統合したフレームワークにおいて、Mastra.AIとDSPyを連携させるための具体的なアーキテクチャ、Agentの役割、連携プロトコル、技術スタック、コードレベルの統合例を提示しました。
+
+今後のステップとしては以下が考えられます。
+
+1.  **プロトタイプ開発**: 特定のユースケース（例: 戦略層のエンタープライズアーキテクトAgentによるビジネス要件分析と戦略オプション評価）に絞り、Mastra.AI AgentとDSPyブリッジサービスのプロトタイプを開発します。
+2.  **DSPyモジュールの詳細実装**: DSPyブリッジサービス側で、`BootstrapFewShot`, `ChainOfThought`, RAG, `MultiChainComparison`などの主要なDSPyモジュールを具体的なタスクに合わせて実装・最適化します。
+3.  **知識ベースの構築**: 各階層で利用する知識ベース（TOGAF成果物、設計パターン、ADRなど）の具体的なリポジトリ選定とデータ投入方法を確立します。
+4.  **評価基盤の構築**: Mastra.AI `Evals`とDSPy `Evaluate`を連携させた自動評価基盤を構築し、継続的な改善サイクルを確立します。
+5.  **段階的導入**: プロトタイプでの検証後、他のAgentやユースケースへ段階的に展開し、フレームワーク全体を構築していきます。
+
+この詳細実装計画が、貴組織におけるAI駆動型IT戦略策定・アプリケーション実装の実現に向けた具体的な一歩となることを期待します。
+
+
+
+
+## 8. 詳細なAgentワークフローと運用プロトコル
+
+本セクションでは、主要なAgentの代表的なワークフロー、連携プロトコルの詳細、エラーハンドリング、トレーサビリティ、セキュリティ管理、そして障害からの回復戦略について、より具体的に記述します。
+
+### 8.1. 代表的なAgentワークフロー例
+
+#### 8.1.1. EnterpriseArchitectAgent: 新規ビジネス戦略に基づくITロードマップ策定支援ワークフロー
+
+1.  **入力受付**: ユーザー（経営層）から「新市場参入のためのIT戦略とロードマップ案作成」の指示と関連資料（市場分析レポート、競合情報など）をMastra.AIプラットフォーム経由で受け取る。
+2.  **初期分析と質問生成 (DSPy連携)**:
+    *   EnterpriseArchitectAgentは、受け取った資料と指示を基に、Runtime Contextを更新。
+    *   DSPyブリッジAPI (`/dspy/optimize_prompt`) を呼び出し、`BootstrapFewShot`を利用してビジネス目標、制約条件、期待成果を明確化するための深掘り質問群を生成。
+    *   生成された質問をユーザーに提示し、回答を収集。Runtime Contextの`Input Data`を更新。
+3.  **現状分析 (AS-IS Architecture)**:
+    *   知識ベース管理Agent経由で、既存のビジネスプロセスモデル、アプリケーションポートフォリオ、技術インフラ情報を取得。
+    *   必要に応じて、関連部署の担当者へのヒアリングタスクを生成し、ユーザーに通知。
+4.  **ターゲットアーキテクチャ (TO-BE) 方針策定 (DSPy連携)**:
+    *   収集した情報とユーザーの回答に基づき、複数のターゲットアーキテクチャ方針案（例: クラウドネイティブ全面移行、段階的モダナイゼーション、特定業務SaaS導入など）を定義。
+    *   DSPyブリッジAPI (`/dspy/evaluate_options`) を呼び出し、`MultiChainComparison`を利用して各方針案をコスト、リスク、実現可能性、ビジネス整合性の観点から評価。知識ベースから業界リファレンスアーキテクチャや過去事例をRAGで参照。
+    *   評価結果（比較レポート、推奨方針）を生成し、ユーザーに提示。フィードバックを要求。
+5.  **ロードマップ策定とTOGAF成果物作成 (DSPy連携)**:
+    *   ユーザー承認を得たターゲットアーキテクチャ方針に基づき、具体的な移行プロジェクト、タイムライン、依存関係を含むITロードマップ案を作成。
+    *   TOGAFの関連成果物（アーキテクチャビジョン、ビジネスアーキテクチャ、情報システムアーキテクチャ、技術アーキテクチャ、機会と解決策、移行計画など）のドラフト作成をDSPyブリッジAPI (`/dspy/generate_document_draft` - 新規APIエンドポイント想定) に依頼。RAGと`ChainOfThought`を活用。
+6.  **成果物レビューと承認**: 作成したロードマップ案とTOGAF成果物ドラフトを関連ステークホルダーに提示し、レビューと承認を依頼。Mastra.AIのワークフロー機能でレビューステータスを管理。
+7.  **最終化と知識ベース登録**: 承認された成果物を最終化し、知識ベース管理Agentに登録を依頼。
+8.  **ワークフロー完了**: ユーザーに完了を通知。
+
+#### 8.1.2. SolutionArchitectAgent: 新規マイクロサービス設計ワークフロー
+
+1.  **入力受付**: EnterpriseArchitectAgentから承認済みのIT戦略・ターゲットアーキテクチャ、またはビジネス部門から新規サービス開発要件を受け取る。
+2.  **要件詳細化とC4コンテキスト定義**: 受け取った要件に基づき、対象システムの境界、主要な外部システムとの関連性をC4コンテキスト図として定義。必要に応じてDSPyの質問生成機能で曖昧点を明確化。
+3.  **コンテナ設計 (DSPy連携)**:
+    *   システムを構成する主要なコンテナ（例: APIゲートウェイ、商品サービス、注文サービス、顧客DB）を特定。
+    *   各コンテナの責務、技術選択肢（言語、フレームワーク、データストア）、コンテナ間インターフェースの概要を定義。
+    *   DSPyブリッジAPI (`/dspy/generate_c4_draft`) を利用し、コンテナ図のドラフトと説明文案を生成。
+    *   技術選択肢について、DSPyのRAG機能で知識ベースから関連ADRやベストプラクティスを検索し、`ChainOfThought`で比較評価。
+4.  **コンポーネント設計とクリーンアーキテクチャ適用 (DSPy連携)**:
+    *   各コンテナ内部の主要コンポーネントをC4コンポーネント図として詳細化。
+    *   クリーンアーキテクチャの原則に基づき、各コンポーネントをレイヤー（Entities, Use Cases, Interface Adapters, Frameworks & Drivers）にマッピング。
+    *   DSPyブリッジAPI (`/dspy/check_clean_architecture_mapping`) を利用し、マッピングの妥当性と依存関係ルールの遵守を検証。
+5.  **インターフェース詳細設計 (OpenAPI)**: コンテナ間、コンポーネント間のAPIをOpenAPI Specification (OAS 3.0) で詳細に定義。DSPyの`Predict`でOASのスキーマ定義や記述補助。
+6.  **ADR作成 (DSPy連携)**: 主要な設計判断（技術選定、パターン適用理由など）をADRとして記録。ADR管理Agentと連携し、DSPyの`Predict`でドラフト生成支援。
+7.  **設計レビューと承認**: 設計整合性チェックAgentに設計全体の整合性検証を依頼。結果を基に設計を修正し、関連ステークホルダー（開発チームリード、セキュリティ担当など）にレビューと承認を依頼。
+8.  **実装チームへの引き渡し**: 承認された設計ドキュメント（C4モデル図、OAS、ADR）を知識ベースに登録し、SoftwareEngineerAgentに実装タスクとして引き渡す。
+
+### 8.2. 連携プロトコルの詳細
+
+#### 8.2.1. 非同期メッセージング (NATS / Redis Streams)
+
+*   **主要トピック/ストリーム例**:
+    *   `ea.strategy.new_request`: EA Agentへの新規戦略策定リクエスト。
+    *   `ea.strategy.approved`: EA Agentが策定した戦略の承認通知。
+    *   `sa.design.new_request.{project_id}`: SA Agentへの新規設計リクエスト。
+    *   `sa.design.review_request.{component_id}`: SA Agentからの設計レビュー依頼。
+    *   `sa.design.approved.{component_id}`: SA Agentの設計承認通知。
+    *   `swe.code.new_task.{component_id}`: SWE Agentへの新規実装タスク。
+    *   `swe.code.review_request.{pull_request_id}`: SWE Agentからのコードレビュー依頼。
+    *   `devops.build.request.{commit_id}`: DevOps Agentへのビルド要求。
+    *   `devops.deploy.success.{environment}.{app_version}`: デプロイ成功通知。
+    *   `kb.artefact.new`: 知識ベースへの新規成果物登録通知。
+    *   `dspy.request.{module_type}`: DSPyブリッジサービスへの処理要求。
+    *   `dspy.response.{correlation_id}`: DSPyブリッジサービスからの処理結果。
+*   **メッセージ構造 (JSON Schema)**: 各トピックで交換されるメッセージの構造をJSON Schemaで厳密に定義。必須フィールド、データ型、フォーマットを規定。
+    ```json
+    // 例: sa.design.new_request.{project_id} メッセージスキーマ
+    {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "NewDesignRequest",
+      "type": "object",
+      "properties": {
+        "message_id": { "type": "string", "format": "uuid" },
+        "correlation_id": { "type": "string", "format": "uuid" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "source_agent_id": { "type": "string" },
+        "project_id": { "type": "string" },
+        "requirements_summary": { "type": "string" },
+        "related_artefact_ids": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["message_id", "timestamp", "source_agent_id", "project_id", "requirements_summary"]
+    }
+    ```
+*   **メッセージ配信保証**: NATSでは`At-Least-Once`配信を基本とし、重要なメッセージにはJetStreamを利用して永続化と確認応答（ACK）を導入。Redis StreamsではコンシューマーグループとACKを利用。
+*   **デッドレターキュー (DLQ)**: 処理に複数回失敗したメッセージ（例: 3回リトライ後）はDLQに転送。DLQのメッセージは定期的に監視され、手動での分析・再処理、または破棄の判断を行う。
+
+#### 8.2.2. API設計 (DSPyブリッジAPI & 内部サービスAPI)
+
+*   **バージョニング**: URLパスにバージョン番号を含める (例: `/api/v1/dspy/...`)。破壊的変更時にはバージョンを上げる。
+*   **認証・認可**: DSPyブリッジAPIや内部サービスAPIには、OAuth2 Client Credentials GrantフローまたはAPIキー認証を必須とする。APIキーは環境変数やシークレット管理サービス（例: HashiCorp Vault）で安全に管理。
+*   **リクエスト/レスポンス形式**: JSONを基本とする。リクエストボディとレスポンスボディの構造はOpenAPI Specificationで明確に定義。
+*   **エラーレスポンス**: HTTPステータスコードを適切に使用（4xx: クライアントエラー, 5xx: サーバーエラー）。レスポンスボディにはエラーコード、エラーメッセージ、詳細情報（デバッグ用）を含むJSONオブジェクトを返す。
+    ```json
+    // エラーレスポンス例
+    {
+      "error_code": "DSPY_MODULE_FAILED",
+      "message": "DSPy ChainOfThought module execution failed.",
+      "details": "Underlying LLM API returned 503 Service Unavailable after 3 retries.",
+      "request_id": "xyz-123-abc"
+    }
+    ```
+*   **冪等性**: 作成・更新系のAPIエンドポイント（特に支払い処理やリソース作成など、副作用が大きいもの）は、クライアントがリクエストヘッダーに冪等キー（`Idempotency-Key`）を付与することで冪等性を保証できるように設計する。サーバー側で冪等キーとリクエスト/レスポンスを一定期間保存し、重複リクエストを検知・処理する。
+*   **レート制限**: APIゲートウェイやサービス自体にレート制限を導入し、不正な大量アクセスやDoS攻撃から保護する。
+
+### 8.3. 包括的なエラーハンドリング戦略
+
+*   **Agentレベル**: 各Mastra.AI Agentは、自身の処理ロジック内で発生しうるエラー（外部API呼び出し失敗、データ処理エラー、ビジネスルール違反など）をtry-catchで捕捉。
+    *   **リトライ**: ネットワークエラーや一時的なサービス利用不可などの**過渡的エラー**に対しては、指数バックオフとジッターを用いたリトライ処理を実装（例: 1秒、2秒、4秒、8秒間隔で最大5回リトライ）。
+    *   **フォールバック**: DSPyブリッジAPIが利用できない場合や、DSPyモジュールが期待通りに動作しない場合、事前に定義されたフォールバックロジック（例: デフォルトのプロンプトを使用、単純なルールベースの処理に切り替え、ユーザーに手動介入を促す）を実行。
+    *   **サーキットブレーカー**: 外部サービス（DSPyブリッジAPI、知識ベースAPIなど）への呼び出しにはサーキットブレーカーパターンを適用。連続してエラーが発生する場合、一定期間サービス呼び出しを停止し、システム全体の負荷増大や連鎖的障害を防ぐ。
+    *   **状態管理**: エラー発生時、Agentの状態を`Error`または`Degraded`に更新し、Runtime Contextにエラー情報を記録。Mastra.AIのワークフローエンジンや監視システムに通知。
+*   **DSPyブリッジサービスレベル**: Python (FastAPI/Flask) 側でも、LLM API呼び出しエラー、DSPy内部モジュールエラー、リソース不足などを適切にハンドリング。
+    *   LLM API呼び出し時のリトライ、タイムアウト設定。
+    *   詳細なエラー情報をログに出力し、Mastra.AI Agentに適切なエラーコードとメッセージを返す。
+*   **ワークフローレベル**: Mastra.AIのワークフローエンジンは、Agentのタスク失敗を検知し、定義された補償トランザクション（例: 作成したリソースのロールバック）、代替パスの実行、またはユーザーへのエスカレーションを行う。
+
+### 8.4. トレーサビリティと監視の強化
+
+*   **分散トレーシング (OpenTelemetry)**:
+    *   Mastra.AI Agent、DSPyブリッジサービス、知識ベースアクセス、メッセージキュー間のすべてのリクエストにトレースIDとスパンIDを伝播。
+    *   各処理ステップの開始・終了、所要時間、主要なパラメータ、エラー情報をトレース属性として記録。
+    *   収集したトレースデータはJaegerやGrafana Tempoに送信し、リクエスト全体の流れを可視化・分析可能にする。
+*   **構造化ロギング**: 全てのコンポーネントでJSON形式の構造化ログを出力。ログにはタイムスタンプ、ログレベル、サービス名、トレースID、スパンID、メッセージ、関連コンテキスト情報を含める。ログ集約基盤（ELK Stack, Grafana Loki）に転送。
+*   **主要メトリクス監視 (Prometheus & Grafana)**:
+    *   **Mastra.AI Agent**: タスク処理時間、タスクキュー長、エラーレート、リソース使用量（CPU、メモリ）。
+    *   **DSPyブリッジサービス**: APIリクエストレート、レスポンスタイム（平均、パーセンタイル）、エラーレート、DSPyモジュール別実行時間、LLM API呼び出しレイテンシとエラーレート。
+    *   **メッセージキュー**: キュー長、メッセージ処理レート、DLQメッセージ数。
+    *   **知識ベース**: クエリ応答時間、エラーレート、接続数。
+*   **ダッシュボード**: Grafanaで上記のメトリクスを可視化するダッシュボードを作成。システム全体の健全性、パフォーマンスボトルネック、異常傾向を早期に把握。
+*   **アラート (Alertmanager)**: 主要メトリクスにしきい値を設定し、異常発生時（エラーレート急増、レイテンシ増大、キュー滞留など）に関係者に通知（Slack, PagerDutyなど）。
+
+### 8.5. セキュリティ管理の強化
+
+*   **認証・認可**: 
+    *   **Agent間通信**: Mastra.AI内部のAgent間通信やメッセージキューアクセスには、mTLSやトークンベース認証を検討。
+    *   **APIキー管理**: DSPyブリッジAPIキーや外部サービスAPIキーはHashiCorp Vaultやクラウドプロバイダーのシークレット管理サービスに保存し、Agentが必要に応じて安全に取得。定期的なキーローテーションを実施。
+*   **データ保護**:
+    *   **通信の暗号化**: すべてのAPI通信（Mastra.AI Agent - DSPyブリッジ、外部サービス）、メッセージキュー通信、データベース接続はTLS 1.2以上で暗号化。
+    *   **データの暗号化**: 知識ベースに保存される機密情報（個人情報、ビジネス上の機密データ）は、アプリケーションレベルまたはデータベースレベルで暗号化 (AES-256など)。
+*   **入力検証とサニタイズ**: Agentへの入力データ、APIリクエストペイロードは厳密に検証（JSON Schema、Pydanticモデルなど）。特にDSPyブリッジAPIへのプロンプト入力は、プロンプトインジェクション攻撃のリスクを低減するため、サニタイズ処理やコンテキスト分離を検討。
+*   **脆弱性管理**: 定期的な脆弱性スキャン（コンテナイメージ、依存ライブラリ）をCI/CDパイプラインに組み込む。セキュリティパッチの迅速な適用プロセスを確立。
+*   **監査ログ**: セキュリティ関連イベント（認証試行、認可変更、機密データアクセス、Agentの重要な状態変更など）を詳細な監査ログとして記録。改ざん防止機能のあるログストレージに保存。
+
+### 8.6. 障害からの回復とレジリエンス
+
+*   **Agentの自己修復**: Mastra.AIプラットフォーム（またはKubernetesなどのオーケストレーション基盤）は、ヘルスチェックに基づいて異常なAgentインスタンスを検出し、自動的に再起動する機能を持つ。
+*   **ワークフローのチェックポイントと再開**: 長時間実行されるワークフローや複数のステップからなる処理では、重要な中間状態を永続化ストア（例: Redis, PostgreSQL）に保存（チェックポイント）。Agentやシステムがクラッシュした場合でも、最後のチェックポイントから処理を再開できるようにする。
+*   **データ整合性**: 分散トランザクションが避けられない場合は、SagaパターンやTwo-Phase Commit (2PC) のようなパターンを検討するが、複雑性が増すため、可能な限り冪等な操作と結果整合性で設計する。重要なデータ操作では、処理前後の状態を記録し、矛盾が発生した場合の補正処理や手動介入プロセスを定義。
+*   **DSPyブリッジサービスの冗長化**: DSPyブリッジサービスは複数のインスタンスをデプロイし、ロードバランサー経由でアクセスすることで可用性を高める。ステートレスな設計を心がけ、スケールアウトを容易にする。
+*   **知識ベースのバックアップとリストア**: 知識ベース（データベース、ドキュメントストア）は定期的にバックアップを取得し、迅速なリストア手順を確立・テストする。
+
+### 8.7. 監視・評価・改善サイクル (運用への組み込み)
+
+1.  **継続的監視**: 8.4で定義したメトリクス、ログ、トレースをリアルタイムで監視。
+2.  **定期的評価 (Mastra.AI Evals + DSPy Evaluate)**:
+    *   週次またはリリースごとに、主要なAgentタスクとDSPyモジュールのパフォーマンスを評価データセットで自動評価。
+    *   評価結果（精度、頑健性、レイテンシ、コストなど）を記録し、前回評価からの変化を追跡。
+3.  **課題特定と分析**: 監視データや評価結果から、パフォーマンスの低いAgent、効果の薄いDSPyプロンプト/モジュール、頻発するエラーなどを特定。トレース情報やログを深掘りして原因を分析。
+4.  **改善アクションの計画と実施**: 分析結果に基づき、改善策を計画。
+    *   DSPyプロンプトの修正、Few-shotサンプルの更新、DSPyオプティマイザの再実行。
+    *   Agentロジックの修正、エラーハンドリングの強化。
+    *   知識ベースのデータ拡充や品質向上。
+    *   インフラ設定の調整（リソース割り当て、スケーリングポリシーなど）。
+5.  **変更のデプロイと効果測定**: 改善策をデプロイし、A/Bテストや段階的ロールアウトを通じて効果を測定。再度、監視と評価を行い、改善サイクルを継続。
+
+この運用プロトコルにより、フレームワーク全体の品質、パフォーマンス、信頼性を継続的に向上させることが可能になります。
+
+
+
+
+### 7.1. Mastra.AI Agent (TypeScript) からDSPyブリッジAPIを呼び出す詳細例
+
+前回の例を拡張し、エラーハンドリング、認証、具体的なリクエスト/レスポンス処理を含めます。
+
+```typescript
+// src/services/dspy-bridge.service.ts
+import axios, { AxiosInstance, AxiosError } from 'axios';
+import { backOff } from 'exponential-backoff';
+
+// DSPyブリッジAPIからの標準的な成功レスポンス型
+export interface DspySuccessResponse<T> {
+  data: T;
+  request_id: string;
+  execution_time_ms: number;
+}
+
+// DSPyブリッジAPIからの標準的なエラーレスポンス型
+export interface DspyErrorResponse {
+  error_code: string;
+  message: string;
+  details?: any;
+  request_id: string;
+}
+
+// プロンプト最適化リクエスト型
+export interface DspyOptimizePromptRequest {
+  task_description: string;
+  few_shot_examples: Array<{ input: string; output: string }>;
+  optimizer_type: 'BootstrapFewShot' | 'BayesianSignatureOptimizer' | 'MIPRO';
+  // optimizer_typeに応じて追加のパラメータが必要になる場合がある
+  [key: string]: any; 
+}
+
+// プロンプト最適化レスポンス型（成功時）
+export interface DspyOptimizePromptResponseData {
+  optimized_prompt: string;
+  evaluation_metrics?: Record<string, any>;
+}
+
+// 戦略オプション評価リクエスト型
+export interface DspyEvaluateOptionsRequest {
+  options: Array<{ name: string; details: string; [key: string]: any }>;
+  evaluation_criteria: string[];
+  module_type: 'MultiChainComparison'; // 他の評価モジュールも想定可能
+  knowledge_base_query?: string; // RAGで利用するクエリ
+}
+
+// 戦略オプション評価レスポンス型（成功時）
+export interface DspyEvaluateOptionsResponseData {
+  evaluation_summary: string; // または構造化された評価結果
+  detailed_comparison: Array<{
+    option_name: string;
+    scores: Record<string, number | string>;
+    pros: string[];
+    cons: string[];
+    reasoning: string;
+  }>;
+}
+
+export class DspyBridgeService {
+  private client: AxiosInstance;
+  private apiKey: string;
+
+  constructor(baseURL: string, apiKey: string, timeout: number = 30000) {
+    this.client = axios.create({
+      baseURL,
+      timeout,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    this.apiKey = apiKey;
+  }
+
+  private async requestWithRetry<T_Req, T_ResData>(method: 'post', endpoint: string, data: T_Req): Promise<DspySuccessResponse<T_ResData>> {
+    const operation = async () => {
+      try {
+        const response = await this.client.request<DspySuccessResponse<T_ResData>>({
+          method,
+          url: endpoint,
+          data,
+          headers: {
+            'X-API-Key': this.apiKey, // APIキーをヘッダーに付与
+          },
+        });
+        return response.data;
+      } catch (error) {
+        const axiosError = error as AxiosError<DspyErrorResponse>;
+        if (axiosError.response) {
+          // DSPyブリッジサービスがエラーレスポンスを返した場合
+          console.error(`DSPy API Error (${axiosError.response.status}) for ${endpoint}:`, axiosError.response.data);
+          // 特定のエラーコードやステータスコードでリトライを制御可能
+          if (axiosError.response.status === 503 || axiosError.response.status === 504) { // Service Unavailable or Gateway Timeout
+            throw axiosError; // リトライ対象のエラーとしてスロー
+          }
+        } else if (axiosError.request) {
+          // リクエストは行われたがレスポンスがない場合 (ネットワークエラーなど)
+          console.error(`DSPy API No Response for ${endpoint}:`, axiosError.message);
+          throw axiosError; // リトライ対象
+        } else {
+          // リクエスト設定時のエラー
+          console.error(`DSPy API Request Setup Error for ${endpoint}:`, axiosError.message);
+        }
+        // リトライ対象外のエラーはここで処理または再スロー
+        throw new Error(`Failed to call DSPy service at ${endpoint}: ${axiosError.message}`);
+      }
+    };
+
+    try {
+      return await backOff(operation, {
+        numOfAttempts: 3, // 最大リトライ回数
+        startingDelay: 1000, // 初期遅延 (ms)
+        timeMultiple: 2, // 遅延時間の乗数
+        jitter: 'full', // ジッター
+        retry: (e: any, attemptNumber: number) => {
+          console.warn(`Retrying DSPy API call to ${endpoint}, attempt ${attemptNumber}...`);
+          return true; // すべてのエラーでリトライを試みる (より詳細な制御も可能)
+        },
+      });
+    } catch (finalError: any) {
+      console.error(`DSPy API call to ${endpoint} failed after multiple retries:`, finalError.message);
+      // フォールバック処理やエラーの再スロー
+      // 例: デフォルトのプロンプトを返す、エラーを上位に伝播するなど
+      throw finalError; 
+    }
+  }
+
+  async optimizePrompt(payload: DspyOptimizePromptRequest): Promise<DspySuccessResponse<DspyOptimizePromptResponseData>> {
+    return this.requestWithRetry<'post', DspyOptimizePromptRequest, DspyOptimizePromptResponseData>('post', '/dspy/optimize_prompt', payload);
+  }
+
+  async evaluateOptions(payload: DspyEvaluateOptionsRequest): Promise<DspySuccessResponse<DspyEvaluateOptionsResponseData>> {
+    return this.requestWithRetry<'post', DspyEvaluateOptionsRequest, DspyEvaluateOptionsResponseData>('post', '/dspy/evaluate_options', payload);
+  }
+  
+  // 他のDSPyモジュール呼び出しメソッドも同様に実装
+  // async generateCode(...): Promise<...>
+  // async generateDocumentDraft(...): Promise<...>
+}
+
+// src/agents/enterprise-architect-agent.ts (一部抜粋)
+import { BaseAgent, tool, AgentContext } from "@mastra/core"; // Mastraの型を仮定
+import { DspyBridgeService, DspyOptimizePromptRequest, DspyEvaluateOptionsRequest, DspySuccessResponse, DspyOptimizePromptResponseData, DspyEvaluateOptionsResponseData } from "../services/dspy-bridge.service";
+
+interface EnterpriseArchitectAgentRuntimeContext extends AgentContext { // AgentContextはMastraの基本型と仮定
+  dspyBridge: DspyBridgeService;
+  // ... 他のプロパティ
+}
+
+export class EnterpriseArchitectAgent extends BaseAgent<EnterpriseArchitectAgentRuntimeContext> {
+  constructor(context: EnterpriseArchitectAgentRuntimeContext) {
+    super(context);
+  }
+
+  @tool({ description: "ビジネス要件を分析し、戦略的質問を生成します" })
+  async analyzeRequirementsAndGenerateQuestions(businessGoal: string, existingInfo: string[]): Promise<string[]> {
+    const taskDescription = `ユーザーのビジネス目標「${businessGoal}」を深掘りし、戦略策定に必要な情報を引き出すための質問を生成する。既存情報: ${existingInfo.join(', ')}`;
+    const fewShotExamples = [
+      { input: "新市場への参入戦略", output: "ターゲット顧客セグメントは？主要な競合は？規制上の課題は？" },
+      { input: "既存システムのモダナイゼーション", output: "現在のシステムの課題は？移行期間のビジネス継続性はどう担保する？予算上限は？" },
+    ];
+
+    try {
+      const response: DspySuccessResponse<DspyOptimizePromptResponseData> = await this.context.dspyBridge.optimizePrompt({
+        task_description: taskDescription,
+        few_shot_examples: fewShotExamples,
+        optimizer_type: 'BootstrapFewShot',
+        // 必要なら追加パラメータ: num_candidate_programs, num_threads など
+      });
+      
+      // ここでは最適化されたプロンプト自体が質問群であると仮定
+      // 実際には、最適化されたプロンプトを使って再度LLMに質問生成を依頼するステップが必要な場合もある
+      const generatedQuestions = response.data.optimized_prompt.split('?').map(q => q.trim() + '?').filter(q => q.length > 1);
+      this.logger.info(`Generated strategic questions using DSPy: ${generatedQuestions.join('; ')}`);
+      return generatedQuestions;
+    } catch (error: any) {
+      this.logger.error(`Failed to generate strategic questions via DSPy: ${error.message}`);
+      // フォールバック: 事前に定義された汎用的な質問リストを返す
+      return [
+        "この戦略の具体的な成功指標(KPI)は何ですか？",
+        "想定される主要なリスクと、その対策はありますか？",
+        "この戦略を実行するための主要なステークホルダーは誰ですか？"
+      ];
+    }
+  }
+
+  @tool({ description: "複数のIT戦略オプションを評価します" })
+  async evaluateStrategicOptions(options: Array<{ name: string; details: string }>): Promise<DspyEvaluateOptionsResponseData | null> {
+    const evaluationCriteria = ["コスト効率", "市場投入までの時間", "技術的実現可能性", "将来の拡張性", "セキュリティリスク"];
+    try {
+      const response = await this.context.dspyBridge.evaluateOptions({
+        options,
+        evaluation_criteria: evaluationCriteria,
+        module_type: 'MultiChainComparison',
+        knowledge_base_query: "関連する業界のIT戦略事例と成功要因"
+      });
+      this.logger.info(`Strategic options evaluated by DSPy. Summary: ${response.data.evaluation_summary}`);
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`Failed to evaluate strategic options via DSPy: ${error.message}`);
+      return null; // またはエラー情報を構造化して返す
+    }
+  }
+}
+```
+
+### 7.2. DSPyブリッジサービス (Python/FastAPI) の詳細実装例
+
+```python
+# dspy_bridge/main.py
+from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi.security.api_key import APIKeyHeader
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Literal
+import dspy
+import os
+import time
+import uuid
+import logging
+
+# --- ロギング設定 ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- APIキー認証 ---
+API_KEY = os.environ.get("DSPY_BRIDGE_API_KEY", "your-secret-api-key") # 環境変数から取得推奨
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
+
+async def get_api_key(key: str = Security(api_key_header)):
+    if key == API_KEY:
+        return key
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Could not validate credentials",
+        )
+
+app = FastAPI(
+    title="DSPy Bridge Service",
+    description="Provides access to DSPy modules and optimizers via REST API for Mastra.AI Agents.",
+    version="1.0.0"
+)
+
+# --- DSPy設定 (環境変数からLLM APIキーなどを設定することを想定) ---
+try:
+    # 例: OpenAI GPT-3.5 Turbo をデフォルトLLMとして設定
+    # 実際のプロジェクトでは、より柔軟なLLM選択メカニズムが必要になる場合がある
+    llm = dspy.OpenAI(model='gpt-3.5-turbo-instruct', api_key=os.environ.get("OPENAI_API_KEY"))
+    dspy.settings.configure(lm=llm)
+    logger.info("DSPy configured with default LLM.")
+except Exception as e:
+    logger.error(f"Failed to configure DSPy: {e}")
+    # DSPyが設定できない場合はアプリケーションを起動させないか、エラーを返すなどの処理が必要
+
+# --- リクエスト・レスポンスモデル (Pydantic) ---
+class FewShotExample(BaseModel):
+    input: str
+    output: str
+
+class OptimizePromptRequest(BaseModel):
+    task_description: str = Field(..., description="Optimization target task description")
+    few_shot_examples: List[FewShotExample] = Field(..., description="Few-shot examples for optimization")
+    optimizer_type: Literal['BootstrapFewShot', 'BayesianSignatureOptimizer', 'MIPRO'] = Field(..., description="DSPy optimizer to use")
+    # オプティマイザごとの追加パラメータ (例)
+    num_candidate_programs: int = Field(default=5, description="For BootstrapFewShot: Number of candidate programs to generate")
+    num_threads: int = Field(default=4, description="For BootstrapFewShot: Number of threads for generation")
+
+class OptimizePromptResponseData(BaseModel):
+    optimized_prompt: str
+    evaluation_metrics: Dict[str, Any] | None = None
+
+class EvaluateOptionItem(BaseModel):
+    name: str
+    details: str
+    # 他の属性も許容
+    class Config:
+        extra = "allow"
+
+class EvaluateOptionsRequest(BaseModel):
+    options: List[EvaluateOptionItem]
+    evaluation_criteria: List[str]
+    module_type: Literal['MultiChainComparison']
+    knowledge_base_query: str | None = None
+
+class EvaluatedOptionDetail(BaseModel):
+    option_name: str
+    scores: Dict[str, Any] # criteriaごとのスコアやテキスト評価
+    pros: List[str]
+    cons: List[str]
+    reasoning: str
+
+class EvaluateOptionsResponseData(BaseModel):
+    evaluation_summary: str
+    detailed_comparison: List[EvaluatedOptionDetail]
+
+class StandardSuccessResponse(BaseModel):
+    data: Any
+    request_id: str
+    execution_time_ms: float
+
+# --- DSPyシグネチャとモジュールの定義例 ---
+
+# プロンプト最適化のための汎用シグネチャ
+class GenerateInstruction(dspy.Signature):
+    """Given a task description and a few examples, generate an optimized instruction (prompt) for an LLM to perform that task."""
+    task_description = dspy.InputField(desc="Description of the task the LLM should perform.")
+    few_shot_examples = dspy.InputField(desc="Examples of input/output for the task.")
+    optimized_instruction = dspy.OutputField(desc="A clear, concise, and effective instruction for the LLM.")
+
+# 戦略オプション評価のためのシグネチャ (MultiChainComparison用)
+class EvaluateStrategyOption(dspy.Signature):
+    """Evaluate a given IT strategy option based on multiple criteria, providing pros, cons, and a reasoning. Refer to the knowledge base if provided."""
+    option_name = dspy.InputField(desc="Name of the strategy option.")
+    option_details = dspy.InputField(desc="Detailed description of the strategy option.")
+    evaluation_criteria = dspy.InputField(desc="Comma-separated list of criteria to evaluate against.")
+    knowledge_base_context = dspy.InputField(desc="Relevant information from knowledge base, if any.", optional=True)
+    
+    score_summary = dspy.OutputField(desc="A summary of scores for each criterion.")
+    pros = dspy.OutputField(desc="List of advantages of this option.")
+    cons = dspy.OutputField(desc="List of disadvantages of this option.")
+    reasoning = dspy.OutputField(desc="Overall reasoning for the evaluation.")
+
+# --- APIエンドポイント ---
+@app.post("/dspy/optimize_prompt", response_model=StandardSuccessResponse, dependencies=[Depends(get_api_key)])
+async def optimize_prompt_endpoint(request: OptimizePromptRequest):
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
+    logger.info(f"Request ID {request_id}: Received optimize_prompt request with optimizer {request.optimizer_type}")
+
+    try:
+        # DSPyオプティマイザの選択と実行
+        # ここではBootstrapFewShotの例を示す。実際にはリクエストに応じて分岐する。
+        if request.optimizer_type == 'BootstrapFewShot':
+            # DSPyの`dspy.Example`形式に変換
+            trainset = [dspy.Example(input=ex.input, output=ex.output).with_inputs('input') for ex in request.few_shot_examples]
+            
+            # 最適化の実行 (ここでは単純なPredictを最適化対象とする例)
+            # 実際には、より複雑なDSPyプログラム (ChainOfThoughtなど) を最適化対象にできる
+            optimizer = dspy.BootstrapFewShot(metric=None, max_bootstrapped_demos=request.num_candidate_programs, num_threads=request.num_threads) # metricはタスクに応じて定義
+            # 最適化対象のプログラム (ここでは単純なPredict)
+            optimized_program = optimizer.compile(student=dspy.Predict(GenerateInstruction), trainset=trainset, valset=None) # valsetも用意するのが望ましい
+            
+            # 最適化されたプロンプト (instruction) を取得する方法は、最適化対象のプログラム構造による
+            # この例ではGenerateInstructionシグネチャの`optimized_instruction`がそれにあたると仮定し、
+            # 実際には最適化されたプログラム (optimized_program) を使って再度推論を実行し、その結果のプロンプトを得るか、
+            # または、optimizerが直接最適化されたプロンプト文字列を返すような仕組みをDSPy側で用意する必要があるかもしれない。
+            # ここでは仮に、最適化されたプログラムの最初のデモンストレーションの出力をプロンプトとする
+            # (これはBootstrapFewShotの動作とは異なる可能性が高い。実際のDSPyのAPIに合わせる必要あり)
+            if hasattr(optimized_program, 'demos') and optimized_program.demos:
+                 # 非常に単純化された例。実際にはoptimizer.compileの結果の構造を確認し、適切に抽出する。
+                 # GenerateInstructionの例では、studentがPredict(GenerateInstruction)なので、
+                 # student.forward(task_description=..., few_shot_examples=...) のようにして、optimized_instructionを得る。
+                 # ここでは仮の値を返す。
+                optimized_prompt_text = f"Optimized for: {request.task_description} (Example from BootstrapFewShot output)"
+                # TODO: 実際の最適化済みプロンプト取得ロジックに置き換える
+                # 例: optimized_predictor = optimized_program.predictor
+                #    response = optimized_predictor(task_description=request.task_description, few_shot_examples=str(request.few_shot_examples))
+                #    optimized_prompt_text = response.optimized_instruction
+            else:
+                optimized_prompt_text = f"Default prompt for: {request.task_description} (Optimization failed or no demos)"
+
+            response_data = OptimizePromptResponseData(optimized_prompt=optimized_prompt_text)
+        else:
+            raise HTTPException(status_code=400, detail=f"Optimizer type '{request.optimizer_type}' not yet implemented.")
+
+        execution_time_ms = (time.time() - start_time) * 1000
+        logger.info(f"Request ID {request_id}: optimize_prompt completed in {execution_time_ms:.2f} ms")
+        return StandardSuccessResponse(data=response_data, request_id=request_id, execution_time_ms=execution_time_ms)
+    
+    except dspy.dsp.errors.DSPyError as e:
+        logger.error(f"Request ID {request_id}: DSPy specific error during optimize_prompt: {e}")
+        raise HTTPException(status_code=500, detail=f"DSPy module execution error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Request ID {request_id}: Unexpected error during optimize_prompt: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.post("/dspy/evaluate_options", response_model=StandardSuccessResponse, dependencies=[Depends(get_api_key)])
+async def evaluate_options_endpoint(request: EvaluateOptionsRequest):
+    request_id = str(uuid.uuid4())
+    start_time = time.time()
+    logger.info(f"Request ID {request_id}: Received evaluate_options request.")
+
+    try:
+        if request.module_type == 'MultiChainComparison':
+            # MultiChainComparisonはDSPyの標準モジュールではないため、カスタムで実装するか、
+            # 複数のChainOfThoughtを並行実行し結果を統合するロジックをここに記述する。
+            # ここでは、各オプションに対してEvaluateStrategyOptionシグネチャを持つChainOfThoughtを実行する例を示す。
+            
+            evaluator = dspy.ChainOfThought(EvaluateStrategyOption)
+            detailed_results: List[EvaluatedOptionDetail] = []
+            knowledge_context = ""
+            if request.knowledge_base_query:
+                # 仮のRAGモジュール呼び出し (実際にはdspy.Retrieveなどを利用)
+                retriever = dspy.Retrieve(k=1) # 簡単のためk=1
+                # retrieved_docs = retriever(request.knowledge_base_query).passages # dspy 0.1.x
+                # dspy 1.0.x以降では retriever(request.knowledge_base_query).passages[0] など
+                # ここでは仮の知識をセット
+                # knowledge_context = f"Knowledge base context for query '{request.knowledge_base_query}': [Retrieved info placeholder]"
+                # dspy.Retrieveの結果を文字列にする必要がある
+                # results = retriever(request.knowledge_base_query)
+                # knowledge_context = "\n".join(results.passages) if results.passages else "No relevant knowledge found."
+                # dspy.settings.rm = ... (retrieval modelの設定が必要)
+                pass # RAGの具体的な実装は省略
+
+            for option in request.options:
+                try:
+                    response = evaluator(option_name=option.name, 
+                                         option_details=option.details, 
+                                         evaluation_criteria=", ".join(request.evaluation_criteria),
+                                         knowledge_base_context=knowledge_context if knowledge_context else None)
+                    
+                    # responseから各フィールドを抽出 (OutputFieldで定義した名前でアクセス)
+                    detailed_results.append(EvaluatedOptionDetail(
+                        option_name=option.name,
+                        scores=response.score_summary, # これがDict[str, Any]であることを期待
+                        pros=response.pros.split('\n') if isinstance(response.pros, str) else response.pros, # LLMの出力形式による
+                        cons=response.cons.split('\n') if isinstance(response.cons, str) else response.cons,
+                        reasoning=response.reasoning
+                    ))
+                except Exception as e:
+                    logger.error(f"Error evaluating option {option.name}: {e}")
+                    detailed_results.append(EvaluatedOptionDetail(
+                        option_name=option.name,
+                        scores={"error": str(e)},
+                        pros=["Evaluation failed"],
+                        cons=["Evaluation failed"],
+                        reasoning=f"Failed to evaluate due to: {e}"
+                    ))
+            
+            summary = f"Evaluated {len(request.options)} options. See detailed comparison."
+            response_data = EvaluateOptionsResponseData(evaluation_summary=summary, detailed_comparison=detailed_results)
+        else:
+            raise HTTPException(status_code=400, detail=f"Module type '{request.module_type}' not yet implemented.")
+
+        execution_time_ms = (time.time() - start_time) * 1000
+        logger.info(f"Request ID {request_id}: evaluate_options completed in {execution_time_ms:.2f} ms")
+        return StandardSuccessResponse(data=response_data, request_id=request_id, execution_time_ms=execution_time_ms)
+
+    except dspy.dsp.errors.DSPyError as e:
+        logger.error(f"Request ID {request_id}: DSPy specific error during evaluate_options: {e}")
+        raise HTTPException(status_code=500, detail=f"DSPy module execution error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Request ID {request_id}: Unexpected error during evaluate_options: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# 他のエンドポイント (コード生成、ドキュメント生成など) も同様に定義
+# 例: /dspy/generate_code, /dspy/generate_document_draft
+
+if __name__ == "__main__":
+    import uvicorn
+    # 環境変数からAPIキーを設定して実行:
+    # OPENAI_API_KEY="sk-..." DSPY_BRIDGE_API_KEY="mysecretkey" python dspy_bridge/main.py
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+
+### 7.3. DSPyブリッジAPIのOpenAPI Specification (OAS 3.0) 例
+
+以下は、上記FastAPIコードから自動生成されるOpenAPIドキュメントの主要部分のイメージです。(FastAPIは`/docs`エンドポイントでSwagger UI、`/redoc`でReDocを自動提供します)
+
+```yaml
+openapi: 3.0.0
+info:
+  title: DSPy Bridge Service
+  description: Provides access to DSPy modules and optimizers via REST API for Mastra.AI Agents.
+  version: 1.0.0
+
+components:
+  securitySchemes:
+    APIKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    FewShotExample:
+      type: object
+      properties:
+        input: { type: string }
+        output: { type: string }
+      required: [input, output]
+
+    OptimizePromptRequest:
+      type: object
+      properties:
+        task_description: { type: string, description: "Optimization target task description" }
+        few_shot_examples:
+          type: array
+          items: { $ref: "#/components/schemas/FewShotExample" }
+          description: "Few-shot examples for optimization"
+        optimizer_type:
+          type: string
+          enum: ["BootstrapFewShot", "BayesianSignatureOptimizer", "MIPRO"]
+          description: "DSPy optimizer to use"
+        num_candidate_programs: { type: integer, default: 5, description: "For BootstrapFewShot..." }
+        num_threads: { type: integer, default: 4, description: "For BootstrapFewShot..." }
+      required: [task_description, few_shot_examples, optimizer_type]
+
+    OptimizePromptResponseData:
+      type: object
+      properties:
+        optimized_prompt: { type: string }
+        evaluation_metrics: { type: object, additionalProperties: true, nullable: true }
+    
+    # ... (EvaluateOptionsRequest, EvaluateOptionsResponseDataなどのスキーマも同様に定義)
+
+    StandardSuccessResponse_OptimizePromptResponseData_:
+      type: object
+      properties:
+        data: { $ref: "#/components/schemas/OptimizePromptResponseData" }
+        request_id: { type: string, format: uuid }
+        execution_time_ms: { type: number }
+      required: [data, request_id, execution_time_ms]
+
+    HTTPValidationError:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc: { type: array, items: { type: string } }
+              msg: { type: string }
+              type: { type: string }
+
+security:
+  - APIKeyAuth: []
+
+paths:
+  /dspy/optimize_prompt:
+    post:
+      summary: Optimize Prompt Endpoint
+      operationId: optimize_prompt_endpoint_dspy_optimize_prompt_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OptimizePromptRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StandardSuccessResponse_OptimizePromptResponseData_"
+        '403':
+          description: Forbidden (Could not validate credentials)
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+        '500':
+          description: Internal Server Error (DSPy module execution error or unexpected error)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: { type: string }
+  
+  # ... (/dspy/evaluate_options エンドポイントも同様に定義)
+
+```
+
+**注記:**
+
+*   上記のPython/FastAPIコードおよびOASの例は、主要な概念を示すためのものであり、実際の運用にはさらなる詳細化（より堅牢なエラーハンドリング、ロギング、DSPyモジュールの網羅的な実装、具体的なLLMやRetrieverの設定、非同期タスクキューの利用検討など）が必要です。
+*   DSPyのAPIやベストプラクティスは進化する可能性があるため、最新のDSPyドキュメントを参照することが重要です。
+*   `MultiChainComparison`のような複雑なモジュールは、DSPyの基本コンポーネントを組み合わせてカスタム実装するか、DSPyコミュニティで提供される拡張機能を探す必要があります。
+*   Mastra.AI Agent側の`DspyBridgeService`は、生成されたOASからクライアントコードを自動生成するツール（例: `openapi-typescript-codegen`）を利用して作成することも可能です。
+
+これらの詳細なコード例とAPI仕様は、Mastra.AIとDSPyを連携させる際の具体的な実装イメージを提供し、開発者が迅速に作業を開始できるようにすることを目的としています。
+
